@@ -295,6 +295,19 @@ export default function App() {
   const [writable, setWritable] = useState(true);
   const [saveError, setSaveError] = useState("");
   const [openId, setOpenId] = useState(null);
+  /* Home filter, sort and search live here so Back returns to the same list. */
+  const [homeView, setHomeView] = useState({ muscle: null, sort: "alpha", query: "" });
+  const homeScroll = useRef(0);
+  const openExercise = (id) => {
+    homeScroll.current = window.scrollY;
+    setOpenId(id);
+    window.scrollTo(0, 0);
+  };
+  useEffect(() => {
+    if (openId !== null) return;
+    const y = homeScroll.current;
+    requestAnimationFrame(() => window.scrollTo(0, y));
+  }, [openId]);
 
   useEffect(() => {
     let alive = true;
@@ -468,6 +481,7 @@ export default function App() {
             exercise={open}
             allSets={data.sets.filter((s) => s.exerciseId === open.id)}
             onBack={() => setOpenId(null)}
+            backLabel={homeView.muscle || "All exercises"}
             onLog={addSet}
             onUpdate={updateSet}
             onDeleteSet={deleteSet}
@@ -482,11 +496,13 @@ export default function App() {
             persists={writable}
             onExport={exportBackup}
             onImport={importBackup}
-            onOpen={setOpenId}
+            onOpen={openExercise}
+            view={homeView}
+            onViewChange={setHomeView}
             onSaveExercise={(ex, removed) => {
               const isNew = !data.exercises.some((e) => e.id === ex.id);
               saveExercise(ex, removed);
-              if (isNew) setOpenId(ex.id);
+              if (isNew) openExercise(ex.id);
             }}
           />
         )}
@@ -545,9 +561,24 @@ function UnilateralToggle({ on, onChange }) {
 
 /* ------------------------------------------------------------------ home */
 
-function HomeScreen({ exercises, sets, persists, onOpen, onSaveExercise, onExport, onImport }) {
-  const [query, setQuery] = useState("");
-  const [muscleFilter, setMuscleFilter] = useState(null);
+function HomeScreen({
+  exercises,
+  sets,
+  persists,
+  onOpen,
+  onSaveExercise,
+  onExport,
+  onImport,
+  view,
+  onViewChange,
+}) {
+  const { query, sort } = view;
+  const muscleFilter = view.muscle;
+  const setQuery = (q) => onViewChange((v) => ({ ...v, query: q }));
+  const setSort = (s) => onViewChange((v) => ({ ...v, sort: s }));
+  /* All opens alphabetical; a muscle group opens most recent first. */
+  const setMuscleFilter = (m) =>
+    onViewChange((v) => ({ ...v, muscle: m, sort: m ? "recent" : "alpha" }));
   const [form, setForm] = useState(null); // null | { id } for edit | { id: null } for new
 
   const lastSetAt = useMemo(() => {
@@ -560,11 +591,24 @@ function HomeScreen({ exercises, sets, persists, onOpen, onSaveExercise, onExpor
   }, [sets]);
 
   const q = query.trim().toLowerCase();
-  const shown = exercises.filter(
+  const filtered = exercises.filter(
     (e) =>
       (muscleFilter === null || e.muscle === muscleFilter) &&
       (!q || e.name.toLowerCase().includes(q))
   );
+  /* exercises arrive alphabetical; recent puts the latest set first and
+     exercises with no sets at the end, still alphabetical */
+  const shown =
+    sort === "recent"
+      ? [...filtered].sort((a, b) => {
+          const ta = lastSetAt.get(a.id);
+          const tb = lastSetAt.get(b.id);
+          if (ta && tb) return new Date(tb) - new Date(ta);
+          if (ta) return -1;
+          if (tb) return 1;
+          return 0;
+        })
+      : filtered;
 
   if (form) {
     const editing = form.id ? exercises.find((e) => e.id === form.id) : null;
@@ -677,11 +721,40 @@ function HomeScreen({ exercises, sets, persists, onOpen, onSaveExercise, onExpor
       </div>
 
       <div className="mt-6">
-        <Eyebrow>
-          {shown.length} {shown.length === 1 ? "exercise" : "exercises"}
-          {muscleFilter ? ` · ${muscleFilter.toLowerCase()}` : ""}
-          {q ? ` · "${query.trim()}"` : ""}
-        </Eyebrow>
+        <div className="flex items-center justify-between gap-3">
+          <Eyebrow>
+            {shown.length} {shown.length === 1 ? "exercise" : "exercises"}
+            {muscleFilter ? ` · ${muscleFilter.toLowerCase()}` : ""}
+            {q ? ` · "${query.trim()}"` : ""}
+          </Eyebrow>
+          <div
+            role="group"
+            aria-label="Sort exercises"
+            className="shrink-0 flex rounded-lg p-0.5"
+            style={{ background: C.surface, border: `1px solid ${C.line}` }}
+          >
+            {[
+              ["alpha", "A-Z"],
+              ["recent", "Recent"],
+            ].map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={sort === k}
+                onClick={() => setSort(k)}
+                className="h-9 px-3 rounded-md text-[13px]"
+                style={{
+                  background: sort === k ? C.text : "transparent",
+                  color: sort === k ? C.ink : C.muted,
+                  fontFamily: F.ui,
+                  fontWeight: 700,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {shown.length === 0 ? (
           <div
@@ -1128,6 +1201,7 @@ function ExerciseScreen({
   onAddVariant,
   onSaveExercise,
   exerciseNames,
+  backLabel = "All exercises",
 }) {
   const [weightFilter, setWeightFilter] = useState(null);
   const [variantFilter, setVariantFilter] = useState(null);
@@ -1227,7 +1301,7 @@ function ExerciseScreen({
         className="h-11 -ml-2 px-2 flex items-center gap-1 text-sm"
         style={{ color: C.muted, fontFamily: F.ui, fontWeight: 600 }}
       >
-        <ChevronLeft size={20} /> All exercises
+        <ChevronLeft size={20} /> {backLabel}
       </button>
 
       <h1

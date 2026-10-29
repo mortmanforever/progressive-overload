@@ -1,0 +1,15 @@
+{
+  "name": "progressive-overload",
+  "private": true,
+  "description": "Build tooling for the Progressive Overload gym tracker. The built site is committed at the repo root for GitHub Pages.",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5",
+    "lucide-react": "0.383.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "3.4.10"
+  }
+}
